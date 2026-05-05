@@ -1,5 +1,8 @@
+import importlib
 import requests
-from config import API_URL
+
+config = importlib.import_module("config")
+API_URL = getattr(config, "API_URL", None) or getattr(config, "APU_URL", "http://127.0.0.1:8000")
 
 
 def upload_pdf(file):
