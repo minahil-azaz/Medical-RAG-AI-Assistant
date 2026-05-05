@@ -8,13 +8,14 @@ langchain
 langchain-community
 langchain-core
 langchain-groq
+langchain-text-splitters
 
 # Vectorstore
 # chromadb
 pinecone
 
 # Embeddings
-# sentence-transformers
+sentence-transformers
 # langchain-google-generative-ai
 langchain-google-genai
 
