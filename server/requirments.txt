@@ -29,6 +29,7 @@ python-dotenv
 pydantic
 requests
 tqdm
+psutil  # for memory monitoring
 
 # Logging (optional but recommended)
 loguru

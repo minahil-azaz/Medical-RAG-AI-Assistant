@@ -78,3 +78,6 @@ This opens the Streamlit app in your browser and connects to the backend.
 - If uploads fail, verify the backend is running and reachable.
 - If the front end cannot connect, check the backend URL in `client/config.py`.
 - Ensure required environment files are present and configured correctly.
+
+
+http://localhost:8000/docs#/default/ask_question_ask__post

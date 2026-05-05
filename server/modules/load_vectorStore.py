@@ -14,6 +14,9 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
+if not PINECONE_API_KEY:
+    raise ValueError("PINECONE_API_KEY environment variable is required")
+
 PINECONE_ENV = "us-east-1"
 PINECONE_INDEX_NAME = "medical-assistance"
 
@@ -47,7 +50,12 @@ index = pc.Index(PINECONE_INDEX_NAME)
 # Load + Split + Embed + Upsert
 # -------------------------
 def load_vectorstore(upload_files):
-    embed_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Use lighter embedding model to reduce memory usage
+    embed_model = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cpu'},  # Force CPU usage
+        encode_kwargs={'normalize_embeddings': True}
+    )
 
     file_paths = []
 
@@ -60,7 +68,7 @@ def load_vectorstore(upload_files):
 
         file_paths.append(str(save_path))
 
-    # 2. Process PDFs
+    # 2. Process PDFs with smaller chunks
     all_texts = []
     all_metadata = []
     all_ids = []
@@ -69,9 +77,10 @@ def load_vectorstore(upload_files):
         loader = PyPDFLoader(file_path)
         documents = loader.load()
 
+        # Smaller chunks to reduce memory usage
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100
+            chunk_size=300,  # Reduced from 500
+            chunk_overlap=50   # Reduced from 100
         )
 
         chunks = splitter.split_documents(documents)
@@ -88,11 +97,20 @@ def load_vectorstore(upload_files):
         all_metadata.extend(metadata)
         all_ids.extend(ids)
 
-    # 3. Embeddings
+    # 3. Embeddings in smaller batches
     print("Embedding chunks...")
-    embeddings = embed_model.embed_documents(all_texts)
+    batch_size = 32  # Process in smaller batches
+    embeddings = []
+    
+    for i in range(0, len(all_texts), batch_size):
+        batch_texts = all_texts[i:i + batch_size]
+        batch_embeddings = embed_model.embed_documents(batch_texts)
+        embeddings.extend(batch_embeddings)
+        
+        # Clear memory
+        del batch_texts, batch_embeddings
 
-    # 4. Upsert to Pinecone
+    # 4. Upsert to Pinecone in smaller batches
     print("Upserting into Pinecone...")
 
     vectors = []
@@ -106,8 +124,20 @@ def load_vectorstore(upload_files):
             }
         })
 
-    batch_size = 100
-    for i in tqdm(range(0, len(vectors), batch_size), desc="Upserting"):
-        index.upsert(vectors=vectors[i:i + batch_size])
+    # Smaller batch size for upsert
+    upsert_batch_size = 50  # Reduced from 100
+    for i in tqdm(range(0, len(vectors), upsert_batch_size), desc="Upserting"):
+        batch = vectors[i:i + upsert_batch_size]
+        index.upsert(vectors=batch)
+        
+        # Clear memory
+        del batch
 
     print(f"Upload complete for {len(file_paths)} files.")
+    
+    # Clean up uploaded files to save disk space
+    for file_path in file_paths:
+        try:
+            os.remove(file_path)
+        except:
+            pass

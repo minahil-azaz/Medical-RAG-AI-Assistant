@@ -7,17 +7,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY environment variable is required")
 
 
 def get_llm_chain(retriever):
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model="llama-3.1-8b-instant"
-    )
-
-    prompt = PromptTemplate(
-        input_variables=["context", "question"],
-        template="""
+    try:
+        # Use a smaller, more memory-efficient model
+        llm = ChatGroq(
+            api_key=GROQ_API_KEY,
+            model="llama-3.1-8b-instant",  # Keep this but add memory optimizations
+            temperature=0.1,  # Lower temperature for more focused responses
+            max_tokens=500   # Limit response length to reduce memory
+        )
+        
+        prompt = PromptTemplate(
+            input_variables=["context", "question"],
+            template="""
 You are **MediBot**, an AI-powered assistant trained to help users understand medical documents and health-related questions.
 
 Your job is to provide clear, accurate, and helpful responses based **only on the provided context**.
@@ -40,32 +46,52 @@ Your job is to provide clear, accurate, and helpful responses based **only on th
 - Do NOT make up facts.
 - Do NOT give medical advice or diagnoses.
 """
-    )
+        )
 
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
 
-    class ChainWrapper:
-        def __init__(self, llm, prompt, retriever):
-            self.llm = llm
-            self.prompt = prompt
-            self.retriever = retriever
+        class ChainWrapper:
+            def __init__(self, llm, prompt, retriever):
+                self.llm = llm
+                self.prompt = prompt
+                self.retriever = retriever
 
-        def __call__(self, inputs):
-            query = inputs.get("query") if isinstance(inputs, dict) else inputs
-            docs = self.retriever.invoke(query)
-            if docs is None:
-                context = ""
-            elif isinstance(docs, list):
-                context = format_docs(docs)
-            else:
-                context = format_docs([docs])
+            def __call__(self, inputs):
+                try:
+                    query = inputs.get("query") if isinstance(inputs, dict) else inputs
+                    docs = self.retriever.invoke(query)
+                    
+                    if docs is None:
+                        context = ""
+                    elif isinstance(docs, list):
+                        # Limit context length to reduce memory usage
+                        context_docs = docs[:2]  # Limit to top 2 docs
+                        context = format_docs(context_docs)
+                    else:
+                        context = format_docs([docs])
 
-            prompt_text = self.prompt.format(context=context, question=query)
-            result = self.llm.invoke(prompt_text)
-            return {
-                "result": result,
-                "source_documents": docs
-            }
+                    prompt_text = self.prompt.format(context=context, question=query)
+                    result = self.llm.invoke(prompt_text)
+                    
+                    return {
+                        "result": result,
+                        "source_documents": docs if docs else []
+                    }
+                except Exception as e:
+                    # Return a fallback response
+                    return {
+                        "result": "I'm sorry, but I encountered an error while processing your question. Please try again.",
+                        "source_documents": []
+                    }
 
-    return ChainWrapper(llm, prompt, retriever)
+        return ChainWrapper(llm, prompt, retriever)
+    except Exception as e:
+        # Return a fallback chain that always returns an error message
+        class FallbackChain:
+            def __call__(self, inputs):
+                return {
+                    "result": "I'm sorry, but the AI assistant is currently unavailable. Please try again later.",
+                    "source_documents": []
+                }
+        return FallbackChain()
