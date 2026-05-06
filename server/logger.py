@@ -1,5 +1,6 @@
 import logging
 
+
 def setup_logger(name="MedicalAssistant"):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
@@ -16,8 +17,6 @@ def setup_logger(name="MedicalAssistant"):
     return logger
 
 
+# ✅ FIX: Removed logger.error / logger.critical calls that fired on every import
+# and polluted logs with fake-looking errors
 logger = setup_logger()
-logger.info("RAG project is working")
-logger.debug("Debugging")
-logger.error("fail to load")
-logger.critical("critical message")
